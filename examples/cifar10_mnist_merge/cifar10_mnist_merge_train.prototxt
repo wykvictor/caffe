@@ -1,0 +1,407 @@
+name: "CIFAR10_MNIST_MERGE"
+layer {
+  name: "cifar"
+  type: "Data"
+  top: "data-cifar"
+  top: "label-cifar"
+  include {
+    phase: TRAIN
+  }
+  transform_param {
+    # crop cifar image to match mnist image data
+    crop_size: 28
+  }
+  data_param {
+    # please download the dataset first
+    source: "examples/cifar10/cifar10_train_lmdb"
+    batch_size: 100
+    backend: LMDB
+  }
+}
+layer {
+  name: "cifar"
+  type: "Data"
+  top: "data-cifar"
+  top: "label-cifar"
+  include {
+    phase: TEST
+  }
+  transform_param {
+    # crop cifar image to match mnist image data
+    crop_size: 28
+  }
+  data_param {
+    source: "examples/cifar10/cifar10_test_lmdb"
+    batch_size: 100
+    backend: LMDB
+  }
+}
+layer {
+  name: "mnist"
+  type: "Data"
+  top: "data-mnist"
+  top: "label-mnist"
+  include {
+    phase: TRAIN
+  }
+  data_param {
+    source: "examples/mnist/mnist_train_lmdb"
+    # mnist is easy to train
+    # so reduce its batch_size to give cifar more computing resources
+    batch_size: 10
+    backend: LMDB
+  }
+}
+layer {
+  name: "mnist"
+  type: "Data"
+  top: "data-mnist"
+  top: "label-mnist"
+  include {
+    phase: TEST
+  }
+  data_param {
+    source: "examples/mnist/mnist_test_lmdb"
+    batch_size: 100
+    backend: LMDB
+  }
+}
+# In order to match cifar.channel=3,
+# add TransformColorLayer to transform mnist.channel from 1 to 3 
+layer {
+  name: "trans-mnist"
+  type: "TransformColor"
+  bottom: "data-mnist"
+  top: "data-mnist-trans"
+}
+
+# cifar and mnist have independent conv1-layers
+# below is the cifar conv1-layers
+layer {
+  name: "conv1-cifar"
+  type: "Convolution"
+  bottom: "data-cifar"
+  top: "conv1-cifar"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 20
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "pool1-cifar"
+  type: "Pooling"
+  bottom: "conv1-cifar"
+  top: "pool1-cifar"
+  pooling_param {
+    pool: MAX
+    kernel_size: 3
+    stride: 2
+  }
+}
+layer {
+  name: "relu1-cifar"
+  type: "ReLU"
+  bottom: "pool1-cifar"
+  top: "pool1-cifar"
+}
+
+# below is the mnist conv1-layers
+layer {
+  name: "conv1-mnist"
+  type: "Convolution"
+  bottom: "data-mnist-trans"
+  top: "conv1-mnist"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 20
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "pool1-mnist"
+  type: "Pooling"
+  bottom: "conv1-mnist"
+  top: "pool1-mnist"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "relu1-mnist"
+  type: "ReLU"
+  bottom: "pool1-mnist"
+  top: "pool1-mnist"
+}
+
+# cifar and mnist share the same conv2-layers
+# unified layer merger them together
+layer {
+  name: "unified"
+  type: "Unified"
+  bottom: "pool1-cifar"
+  bottom: "pool1-mnist"
+  top: "unified"
+  # we need label_index to distinguish the 2 models in dispatch layer
+  top: "label_index"
+}
+layer {
+  name: "conv2"
+  type: "Convolution"
+  bottom: "unified"
+  top: "conv2"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 32
+    pad: 2
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "gaussian"
+      std: 0.01
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "relu2"
+  type: "ReLU"
+  bottom: "conv2"
+  top: "conv2"
+}
+layer {
+  name: "pool2"
+  type: "Pooling"
+  bottom: "conv2"
+  top: "pool2"
+  pooling_param {
+    pool: AVE
+    kernel_size: 3
+    stride: 2
+  }
+}
+
+# dispatch layer dispatch them from the unified conv2-layers
+# to 2 different layers
+layer {
+  name: "dispatch"
+  type: "Dispatch"
+  bottom: "pool2"
+  bottom: "label_index"
+  top: "dispatch-cifar"
+  top: "dispatch-mnist"
+}
+
+# below is the cifar conv3, ip, loss and accuracy layers
+layer {
+  name: "conv3-cifar"
+  type: "Convolution"
+  bottom: "dispatch-cifar"
+  top: "conv3-cifar"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 64
+    pad: 2
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "gaussian"
+      std: 0.01
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "relu3-cifar"
+  type: "ReLU"
+  bottom: "conv3-cifar"
+  top: "conv3-cifar"
+}
+layer {
+  name: "pool3-cifar"
+  type: "Pooling"
+  bottom: "conv3-cifar"
+  top: "pool3-cifar"
+  pooling_param {
+    pool: AVE
+    kernel_size: 3
+    stride: 2
+  }
+}
+layer {
+  name: "ip1-cifar"
+  type: "InnerProduct"
+  bottom: "pool3-cifar"
+  top: "ip1-cifar"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 64
+    weight_filler {
+      type: "gaussian"
+      std: 0.1
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "relu4-cifar"
+  type: "ReLU"
+  bottom: "ip1-cifar"
+  top: "ip1-cifar"
+}
+layer {
+  name: "ip2-cifar"
+  type: "InnerProduct"
+  bottom: "ip1-cifar"
+  top: "ip2-cifar"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 10
+    weight_filler {
+      type: "gaussian"
+      std: 0.1
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+
+layer {
+  name: "loss-cifar"
+  type: "SoftmaxWithLoss"
+  bottom: "ip2-cifar"
+  bottom: "label-cifar"
+  top: "loss-cifar"
+}
+layer {
+  name: "accuracy-cifar"
+  type: "Accuracy"
+  bottom: "ip2-cifar"
+  bottom: "label-cifar"
+  top: "accuracy-cifar"
+  include {
+    phase: TEST
+  }
+}
+
+# below is the mnist ip, loss and accuracy layers
+# (mnist does not need conv3 layers)
+layer {
+  name: "ip1-mnist"
+  type: "InnerProduct"
+  bottom: "dispatch-mnist"
+  top: "ip1-mnist"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+ inner_product_param {
+    num_output: 500
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "relu3-mnist"
+  type: "ReLU"
+  bottom: "ip1-mnist"
+  top: "ip1-mnist"
+}
+layer {
+  name: "ip2-mnist"
+  type: "InnerProduct"
+  bottom: "ip1-mnist"
+  top: "ip2-mnist"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 10
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "loss-mnist"
+  type: "SoftmaxWithLoss"
+  bottom: "ip2-mnist"
+  bottom: "label-mnist"
+  top: "loss_mnist"
+}
+
+layer {
+  name: "accuracy-mnist"
+  type: "Accuracy"
+  bottom: "ip2-mnist"
+  bottom: "label-mnist"
+  top: "accuracy-mnist"
+  include {
+    phase: TEST
+  }
+}
