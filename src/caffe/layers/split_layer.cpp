@@ -6,6 +6,17 @@
 namespace caffe {
 
 template <typename Dtype>
+void SplitLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top) {
+  // Dispatch layer need batch_size wraped in label_index blob to setting
+  // up itself, so copy data in SplitLayer
+  for (int i = 0; i < top.size(); ++i) {
+    top[i]->ReshapeLike(*bottom[0]);
+    top[i]->ShareData(*bottom[0]);
+  }
+}
+
+template <typename Dtype>
 void SplitLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   count_ = bottom[0]->count();
