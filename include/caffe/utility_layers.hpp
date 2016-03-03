@@ -49,6 +49,44 @@ class UnifiedLayer : public Layer<Dtype> {
   int childlayer_num_;
 };
 
+/**
+ * @brief Dispatchs data to different top layers according to its Label_index.
+ * This layer should be used with UnifiedDataLayer to merge different models.
+ */
+template <typename Dtype>
+class DispatchLayer : public Layer<Dtype> {
+ public:
+  explicit DispatchLayer(const LayerParameter& param)
+      : Layer<Dtype>(param) {}
+  virtual void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+  virtual void Reshape(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+
+  virtual inline const char* type() const { return "Dispatch"; }
+  // Dispatch 1 bottom blob to N top blobs
+  virtual inline int MinTopBlobs() const { return 1; }
+  // here 2 bottom blobs contain: Data + Label_index
+  virtual inline int ExactNumBottomBlobs() const { return 2; }
+
+ protected:
+  virtual void Forward_cpu(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+  virtual void Backward_cpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom);
+
+  virtual void Forward_gpu(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+  virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom);
+
+ private:
+  // Record each layer's batch size, according to blob label_index(bottom[1])
+  vector<int> label_index_;
+  // number of child layers(models)
+  int childlayer_num_;
+};
+
 }  // namespace caffe
 
 #endif  // CAFFE_UTILITY_LAYERS_HPP_
