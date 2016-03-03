@@ -8,6 +8,38 @@
 namespace caffe {
 
 /**
+ * @brief Before forwarding to the Net, adding this layer after date layer
+ *  to force the image to have 3 color channels if it only has 1 channel now.
+ *  Also, if the image data has more than 1 channels already, reduce it to 1.
+ */
+template <typename Dtype>
+class TransformColorLayer: public Layer<Dtype> {
+ public:
+  explicit TransformColorLayer(const LayerParameter& param)
+      : Layer<Dtype>(param) {}
+  virtual void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+  virtual void Reshape(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+
+  virtual inline const char* type() const { return "TransformColor"; }
+  virtual inline int MinTopBlobs() const { return 1; }
+  virtual inline int MinBottomBlobs() const { return 1; }
+
+ protected:
+  virtual void Forward_cpu(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+  virtual void Backward_cpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {}
+  // TODO: complete the gpu version
+  // Now, this layer is only used to transform mnist data
+  virtual void Forward_gpu(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+  virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {}
+};
+
+/**
  * @brief Merge blobs from different models into one unified blob.
  * Assumes all child layers have the same shape.
  */
